@@ -18,15 +18,13 @@ ifeq ($(SCHEME),roothide)
 else ifeq ($(SCHEME),rootless)
     export THEOS_PACKAGE_SCHEME = rootless
 else
-    # 默认使用rootless
-    export THEOS_PACKAGE_SCHEME = rootless
+    unexport THEOS_PACKAGE_SCHEME
 endif
 
-# 判断是否在GitHub Action环境中运行
+# 在GitHub Actions中运行时的特殊配置
 ifeq ($(GITHUB_ACTIONS),true)
-    # 在GitHub Actions中运行时的特殊配置
-    export THEOS_PACKAGE_SCHEME = rootless
     export INSTALL = 0
+    export FINALPACKAGE = 1
 endif
 
 export DEBUG = 0
@@ -39,7 +37,7 @@ TWEAK_NAME = DYYY
 DYYY_LIBRARY_SEARCH_PATHS = $(THEOS_PROJECT_DIR)/libs
 DYYY_HEADER_SEARCH_PATHS = $(THEOS_PROJECT_DIR)/libs/include
 
-DYYY_FILES = DYYY.xm DYYYHide.xm DYYYFloatClearButton.xm DYYYFloatSpeedButton.xm DYYYSettings.xm DYYYABTestHook.xm DYYYLongPressPanel.xm DYYYSaveMedia.xm DYYYDoubleClickMenu.xm DYYYSettingViewController.m DYYYBottomAlertView.m DYYYCustomInputView.m DYYYOptionsSelectionView.m DYYYIconOptionsDialogView.m DYYYAboutDialogView.m DYYYKeywordListView.m DYYYFilterSettingsView.m DYYYManager.m DYYYUtils.m CityManager.m
+DYYY_FILES = DYYY.xm DYYYHide.xm DYYYDarkMode.xm DYYYFloatClearButton.xm DYYYFloatSpeedButton.xm DYYYSettings.xm DYYYABTestHook.xm DYYYLongPressPanel.xm DYYYSaveMedia.xm DYYYDoubleClickMenu.xm DYYYSettingViewController.m DYYYBottomAlertView.m DYYYCustomInputView.m DYYYOptionsSelectionView.m DYYYIconOptionsDialogView.m DYYYAboutDialogView.m DYYYKeywordListView.m DYYYFilterSettingsView.m DYYYConfirmCloseView.m DYYYManager.m DYYYUtils.m CityManager.m
 DYYY_CFLAGS = -fobjc-arc -w -I$(DYYY_HEADER_SEARCH_PATHS)
 DYYY_LDFLAGS = -L$(DYYY_LIBRARY_SEARCH_PATHS) -lwebp -weak_framework AVFAudio
 DYYY_FRAMEWORKS = CoreAudio
@@ -53,7 +51,11 @@ export LOGOS_DEFAULT_GENERATOR=internal
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 
-THEOS_DEVICE_IP = 192.168.15.246
+ifeq ($(shell whoami),huami)
+    THEOS_DEVICE_IP = 192.168.31.222
+else
+    THEOS_DEVICE_IP = 192.168.15.246
+endif
 THEOS_DEVICE_PORT = 22
 
 # 清理 packages 目录

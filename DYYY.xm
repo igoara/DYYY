@@ -114,81 +114,71 @@ static void DYYYAddCustomViewToParent(UIView *parentView, float transparency) {
 
 %hook AWEFeedContainerContentView
 - (void)setAlpha:(CGFloat)alpha {
-	// 纯净模式功能
-	if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYisEnablePure"]) {
-		%orig(0.0);
-
-		static dispatch_source_t timer = nil;
-		static int attempts = 0;
-
-		if (timer) {
-			dispatch_source_cancel(timer);
-			timer = nil;
-		}
-
-		void (^tryFindAndSetPureMode)(void) = ^{
-		  UIWindow *keyWindow = [DYYYManager getActiveWindow];
-
-		  if (keyWindow && keyWindow.rootViewController) {
-			  UIViewController *feedVC = [self findViewController:keyWindow.rootViewController ofClass:NSClassFromString(@"AWEFeedTableViewController")];
-			  if (feedVC) {
-				  [feedVC setValue:@YES forKey:@"pureMode"];
-				  if (timer) {
-					  dispatch_source_cancel(timer);
-					  timer = nil;
-				  }
-				  attempts = 0;
-				  return;
-			  }
-		  }
-
-		  attempts++;
-		  if (attempts >= 10) {
-			  if (timer) {
-				  dispatch_source_cancel(timer);
-				  timer = nil;
-			  }
-			  attempts = 0;
-		  }
-		};
-
-		timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
-		dispatch_source_set_timer(timer, DISPATCH_TIME_NOW, 0.5 * NSEC_PER_SEC, 0);
-		dispatch_source_set_event_handler(timer, tryFindAndSetPureMode);
-		dispatch_resume(timer);
-
-		tryFindAndSetPureMode();
-		return;
-	}
-
-	// 原来的透明度设置逻辑，保持不变
-	NSString *transparentValue = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYtopbartransparent"];
-	if (transparentValue && transparentValue.length > 0) {
-		CGFloat alphaValue = [transparentValue floatValue];
-		if (alphaValue >= 0.0 && alphaValue <= 1.0) {
-			%orig(alphaValue);
-		} else {
-			%orig(1.0);
-		}
-	} else {
-		%orig(1.0);
-	}
+    // 纯净模式功能
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYisEnablePure"]) {
+        %orig(0.0);
+        static dispatch_source_t timer = nil;
+        static int attempts = 0;
+        if (timer) {
+            dispatch_source_cancel(timer);
+            timer = nil;
+        }
+        void (^tryFindAndSetPureMode)(void) = ^{
+            UIWindow *keyWindow = [DYYYManager getActiveWindow];
+            if (keyWindow && keyWindow.rootViewController) {
+                UIViewController *feedVC = [self findViewController:keyWindow.rootViewController ofClass:NSClassFromString(@"AWEFeedTableViewController")];
+                if (feedVC) {
+                    [feedVC setValue:@YES forKey:@"pureMode"];
+                    if (timer) {
+                        dispatch_source_cancel(timer);
+                        timer = nil;
+                    }
+                    attempts = 0;
+                    return;
+                }
+            }
+            attempts++;
+            if (attempts >= 10) {
+                if (timer) {
+                    dispatch_source_cancel(timer);
+                    timer = nil;
+                }
+                attempts = 0;
+            }
+        };
+        timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+        dispatch_source_set_timer(timer, DISPATCH_TIME_NOW, 0.5 * NSEC_PER_SEC, 0);
+        dispatch_source_set_event_handler(timer, tryFindAndSetPureMode);
+        dispatch_resume(timer);
+        tryFindAndSetPureMode();
+        return;
+    }
+    // 原来的透明度设置逻辑，保持不变
+    NSString *transparentValue = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYtopbartransparent"];
+    if (transparentValue && transparentValue.length > 0) {
+        CGFloat alphaValue = [transparentValue floatValue];
+        if (alphaValue >= 0.0 && alphaValue <= 1.0) {
+            CGFloat finalAlpha = (alphaValue < 0.011) ? 0.011 : alphaValue;
+            %orig(finalAlpha);
+        } else {
+            %orig(1.0);
+        }
+    } else {
+        %orig(1.0);
+    }
 }
-
 %new
 - (UIViewController *)findViewController:(UIViewController *)vc ofClass:(Class)targetClass {
-	if (!vc)
-		return nil;
-	if ([vc isKindOfClass:targetClass])
-		return vc;
-
-	for (UIViewController *childVC in vc.childViewControllers) {
-		UIViewController *found = [self findViewController:childVC ofClass:targetClass];
-		if (found)
-			return found;
-	}
-
-	return [self findViewController:vc.presentedViewController ofClass:targetClass];
+    if (!vc)
+        return nil;
+    if ([vc isKindOfClass:targetClass])
+        return vc;
+    for (UIViewController *childVC in vc.childViewControllers) {
+        UIViewController *found = [self findViewController:childVC ofClass:targetClass];
+        if (found)
+            return found;
+    }
+    return [self findViewController:vc.presentedViewController ofClass:targetClass];
 }
 %end
 
@@ -204,33 +194,36 @@ static void DYYYAddCustomViewToParent(UIView *parentView, float transparency) {
 }
 %new
 - (void)applyDYYYTransparency {
-	// 如果启用了纯净模式，不做任何处理
-	if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYisEnablePure"]) {
-		return;
-	}
-
-	NSString *transparentValue = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYtopbartransparent"];
-	if (transparentValue && transparentValue.length > 0) {
-		CGFloat alphaValue = [transparentValue floatValue];
-		if (alphaValue >= 0.0 && alphaValue <= 1.0) {
-			// 设置自身背景色的透明度
-			UIColor *backgroundColor = self.backgroundColor;
-			if (backgroundColor) {
-				CGFloat r, g, b, a;
-				if ([backgroundColor getRed:&r green:&g blue:&b alpha:&a]) {
-					self.backgroundColor = [UIColor colorWithRed:r green:g blue:b alpha:alphaValue * a];
-				}
-			}
-
-			// 使用类型转换确保编译器知道这是一个 UIView
-			[(UIView *)self setAlpha:alphaValue];
-
-			// 确保子视图不会叠加透明度
-			for (UIView *subview in self.subviews) {
-				subview.alpha = 1.0;
-			}
-		}
-	}
+    // 如果启用了纯净模式，不做任何处理
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYisEnablePure"]) {
+        return;
+    }
+    
+    NSString *transparentValue = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYtopbartransparent"];
+    if (transparentValue && transparentValue.length > 0) {
+        CGFloat alphaValue = [transparentValue floatValue];
+        if (alphaValue >= 0.0 && alphaValue <= 1.0) {
+            // 自己骗自己,透明度很小时使用0.011
+            CGFloat finalAlpha = (alphaValue < 0.011) ? 0.011 : alphaValue;
+            
+            // 设置自身背景色的透明度
+            UIColor *backgroundColor = self.backgroundColor;
+            if (backgroundColor) {
+                CGFloat r, g, b, a;
+                if ([backgroundColor getRed:&r green:&g blue:&b alpha:&a]) {
+                    self.backgroundColor = [UIColor colorWithRed:r green:g blue:b alpha:finalAlpha * a];
+                }
+            }
+            
+            // 设置视图的alpha
+            [(UIView *)self setAlpha:finalAlpha];
+            
+            // 确保子视图不会叠加透明度
+            for (UIView *subview in self.subviews) {
+                subview.alpha = 1.0;
+            }
+        }
+    }
 }
 %end
 
@@ -527,6 +520,39 @@ static void DYYYAddCustomViewToParent(UIView *parentView, float transparency) {
 }
 %end
 
+%hook AWEDPlayerFeedPlayerViewController
+
+- (void)viewDidLayoutSubviews {
+	%orig;
+
+	if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYisEnableFullScreen"]) {
+		UIView *contentView = self.contentView;
+		if (contentView && contentView.superview) {
+			CGRect frame = contentView.frame;
+			CGFloat parentHeight = contentView.superview.frame.size.height;
+
+			if (frame.size.height == parentHeight - 83) {
+				frame.size.height = parentHeight;
+				contentView.frame = frame;
+				[contentView setNeedsLayout];
+				[contentView layoutIfNeeded];
+			}
+		}
+	}
+}
+
+- (void)setIsAutoPlay:(BOOL)arg0 {
+	float defaultSpeed = [[NSUserDefaults standardUserDefaults] floatForKey:@"DYYYDefaultSpeed"];
+
+	if (defaultSpeed > 0 && defaultSpeed != 1) {
+		[self setVideoControllerPlaybackRate:defaultSpeed];
+	}
+
+	%orig(arg0);
+}
+
+%end
+
 %hook UIView
 
 - (void)setFrame:(CGRect)frame {
@@ -541,7 +567,7 @@ static void DYYYAddCustomViewToParent(UIView *parentView, float transparency) {
 	}
 
 	UIViewController *vc = [self firstAvailableUIViewController];
-	if ([vc isKindOfClass:%c(AWEAwemePlayVideoViewController)]) {
+	if ([vc isKindOfClass:%c(AWEAwemePlayVideoViewController)] || [vc isKindOfClass:%c(AWEDPlayerFeedPlayerViewController)]) {
 
 		if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYisEnableCommentBlur"] && frame.origin.x != 0) {
 			return;
@@ -693,6 +719,7 @@ static void DYYYAddCustomViewToParent(UIView *parentView, float transparency) {
 %end
 
 %hook AWEAwemeModel
+
 - (id)initWithDictionary:(id)arg1 error:(id *)arg2 {
 	id orig = %orig;
 
@@ -1138,6 +1165,8 @@ static void DYYYAddCustomViewToParent(UIView *parentView, float transparency) {
 		NSString *scheduleStyle = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYScheduleStyle"];
 		BOOL showRemainingTime = [scheduleStyle isEqualToString:@"进度条右侧剩余"];
 		BOOL showCompleteTime = [scheduleStyle isEqualToString:@"进度条右侧完整"];
+		BOOL showLeftRemainingTime = [scheduleStyle isEqualToString:@"进度条左侧剩余"];
+		BOOL showLeftCompleteTime = [scheduleStyle isEqualToString:@"进度条左侧完整"];
 
 		// 获取用户设置的时间标签颜色
 		NSString *labelColorHex = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYProgressLabelColor"];
@@ -1146,34 +1175,44 @@ static void DYYYAddCustomViewToParent(UIView *parentView, float transparency) {
 			labelColor = [DYYYManager colorWithHexString:labelColorHex];
 		}
 
-		// 只有在非"进度条右侧剩余"和非"进度条右侧完整"模式时创建左侧时间标签
+		// 创建左侧时间标签 - 根据不同的显示模式处理
 		if (!showRemainingTime && !showCompleteTime) {
-			// 创建左侧时间标签
 			UILabel *leftLabel = [[UILabel alloc] init];
 			leftLabel.frame = CGRectMake(sliderFrame.origin.x, sliderFrame.origin.y + verticalOffset, 50, 15);
 			leftLabel.backgroundColor = [UIColor clearColor];
-			[leftLabel setText:@"00:00"];
+
+			// 根据左侧显示模式设置不同的初始文本
+			if (showLeftRemainingTime) {
+				[leftLabel setText:@"00:00"]; // 剩余时间模式
+			} else if (showLeftCompleteTime) {
+				[leftLabel setText:[NSString stringWithFormat:@"00:00/%@", duration]]; // 完整时间模式
+			} else {
+				[leftLabel setText:@"00:00"]; // 默认模式
+			}
+
 			[leftLabel setTextColor:labelColor];
 			[leftLabel setFont:[UIFont systemFontOfSize:8]];
 			leftLabel.tag = 10001;
 			[parentView addSubview:leftLabel];
 		}
 
-		// 创建右侧时间标签
-		UILabel *rightLabel = [[UILabel alloc] init];
-		if (showCompleteTime) {
-			rightLabel.frame = CGRectMake(sliderFrame.origin.x + sliderFrame.size.width - 50, sliderFrame.origin.y + verticalOffset, 50, 15);
-			// 修改这里：始终使用 00:00/时长 的格式
-			[rightLabel setText:[NSString stringWithFormat:@"00:00/%@", duration]];
-		} else {
-			rightLabel.frame = CGRectMake(sliderFrame.origin.x + sliderFrame.size.width - 23, sliderFrame.origin.y + verticalOffset, 50, 15);
-			[rightLabel setText:showRemainingTime ? @"00:00" : duration];
+		// 只在非左侧显示模式下创建右侧标签
+		if (!showLeftRemainingTime && !showLeftCompleteTime) {
+			UILabel *rightLabel = [[UILabel alloc] init];
+			if (showCompleteTime) {
+				rightLabel.frame = CGRectMake(sliderFrame.origin.x + sliderFrame.size.width - 50, sliderFrame.origin.y + verticalOffset, 50, 15);
+				// 修改这里：始终使用 00:00/时长 的格式
+				[rightLabel setText:[NSString stringWithFormat:@"00:00/%@", duration]];
+			} else {
+				rightLabel.frame = CGRectMake(sliderFrame.origin.x + sliderFrame.size.width - 23, sliderFrame.origin.y + verticalOffset, 50, 15);
+				[rightLabel setText:showRemainingTime ? @"00:00" : duration];
+			}
+			rightLabel.backgroundColor = [UIColor clearColor];
+			[rightLabel setTextColor:labelColor];
+			[rightLabel setFont:[UIFont systemFontOfSize:8]];
+			rightLabel.tag = 10002;
+			[parentView addSubview:rightLabel];
 		}
-		rightLabel.backgroundColor = [UIColor clearColor];
-		[rightLabel setTextColor:labelColor];
-		[rightLabel setFont:[UIFont systemFontOfSize:8]];
-		rightLabel.tag = 10002;
-		[parentView addSubview:rightLabel];
 	}
 }
 
@@ -1238,10 +1277,24 @@ static void DYYYAddCustomViewToParent(UIView *parentView, float transparency) {
 		NSString *scheduleStyle = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYScheduleStyle"];
 		BOOL showRemainingTime = [scheduleStyle isEqualToString:@"进度条右侧剩余"];
 		BOOL showCompleteTime = [scheduleStyle isEqualToString:@"进度条右侧完整"];
+		BOOL showLeftRemainingTime = [scheduleStyle isEqualToString:@"进度条左侧剩余"];
+		BOOL showLeftCompleteTime = [scheduleStyle isEqualToString:@"进度条左侧完整"];
 
 		// 如果检测到时间
 		if (arg1 > 0 && leftLabel) {
-			[leftLabel setText:[self formatTimeFromSeconds:arg1]];
+			if (showLeftRemainingTime) {
+				// 计算剩余时间
+				CGFloat remainingTime = arg2 - arg1;
+				if (remainingTime < 0)
+					remainingTime = 0;
+				[leftLabel setText:[NSString stringWithFormat:@"%@", [self formatTimeFromSeconds:remainingTime]]];
+			} else if (showLeftCompleteTime) {
+				// 显示当前时间/总时间
+				[leftLabel setText:[NSString stringWithFormat:@"%@/%@", [self formatTimeFromSeconds:arg1], [self formatTimeFromSeconds:arg2]]];
+			} else {
+				// 常规模式显示当前时间
+				[leftLabel setText:[self formatTimeFromSeconds:arg1]];
+			}
 			[leftLabel setTextColor:labelColor];
 		}
 		if (arg2 > 0 && rightLabel) {
@@ -1393,45 +1446,175 @@ static void DYYYAddCustomViewToParent(UIView *parentView, float transparency) {
 
 %hook AWEPlayInteractionTimestampElement
 - (id)timestampLabel {
-	UILabel *label = %orig;
-	if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYisEnableArea"]) {
-		NSString *text = label.text;
-		NSString *cityCode = self.model.cityCode;
+    UILabel *label = %orig;
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYisEnableArea"]) {
+        NSString *text = label.text;
+        NSString *cityCode = self.model.cityCode;
 
-		if (cityCode.length > 0) {
-			NSString *cityName = [CityManager.sharedInstance getCityNameWithCode:cityCode] ?: @"";
-			NSString *provinceName = [CityManager.sharedInstance getProvinceNameWithCode:cityCode] ?: @"";
+        if (cityCode.length > 0) {
+            NSString *cityName = [CityManager.sharedInstance getCityNameWithCode:cityCode];
+            NSString *provinceName = [CityManager.sharedInstance getProvinceNameWithCode:cityCode];
+           // 使用 GeoNames API
+            if (!cityName || cityName.length == 0) {
+                NSString *cacheKey = cityCode;
+                
+                static NSCache *geoNamesCache = nil;
+                static dispatch_once_t onceToken;
+                dispatch_once(&onceToken, ^{
+                    geoNamesCache = [[NSCache alloc] init];
+                    geoNamesCache.name = @"com.dyyy.geonames.cache";
+                    geoNamesCache.countLimit = 1000;
+                });
+                
+                NSDictionary *cachedData = [geoNamesCache objectForKey:cacheKey];
+                
+                if (!cachedData) {
+                    NSString *cachesDir = [NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES) firstObject];
+                    NSString *geoNamesCacheDir = [cachesDir stringByAppendingPathComponent:@"DYYYGeoNamesCache"];
+                    
+                    NSFileManager *fileManager = [NSFileManager defaultManager];
+                    if (![fileManager fileExistsAtPath:geoNamesCacheDir]) {
+                        [fileManager createDirectoryAtPath:geoNamesCacheDir withIntermediateDirectories:YES attributes:nil error:nil];
+                    }
+                    
+                    NSString *cacheFilePath = [geoNamesCacheDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.plist", cacheKey]];
+                    
+                    if ([fileManager fileExistsAtPath:cacheFilePath]) {
+                        cachedData = [NSDictionary dictionaryWithContentsOfFile:cacheFilePath];
+                        if (cachedData) {
+                            [geoNamesCache setObject:cachedData forKey:cacheKey];
+                        }
+                    }
+                }
+                
+                if (cachedData) {
+                    NSString *countryName = cachedData[@"countryName"];
+                    NSString *adminName1 = cachedData[@"adminName1"];
+                    NSString *localName = cachedData[@"name"];
+                    NSString *displayLocation = @"未知";
+                    
+                    if (countryName.length > 0) {
+                        if (adminName1.length > 0 && localName.length > 0 && 
+                            ![countryName isEqualToString:@"中国"] && 
+                            ![countryName isEqualToString:localName]) {
+                            // 国外位置：国家 + 州/省 + 地点
+                            displayLocation = [NSString stringWithFormat:@"%@ %@ %@", countryName, adminName1, localName];
+                        } else if (localName.length > 0 && ![countryName isEqualToString:localName]) {
+                            // 只有国家和地点名
+                            displayLocation = [NSString stringWithFormat:@"%@ %@", countryName, localName];
+                        } else {
+                            // 只有国家名
+                            displayLocation = countryName;
+                        }
+                    } else if (localName.length > 0) {
+                        displayLocation = localName;
+                    }
+                  
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        NSString *currentText = label.text ?: @"";
+                        
+                        if ([currentText containsString:@"IP属地："]) {
+                            NSRange range = [currentText rangeOfString:@"IP属地："];
+                            if (range.location != NSNotFound) {
+                                NSString *baseText = [currentText substringToIndex:range.location];
+                                if (![currentText containsString:displayLocation]) {
+                                    label.text = [NSString stringWithFormat:@"%@IP属地：%@", baseText, displayLocation];
+                                }
+                            }
+                        } else {
+                            NSString *baseText = label.text ?: @"";
+                            if (baseText.length > 0) {
+                                label.text = [NSString stringWithFormat:@"%@  IP属地：%@", baseText, displayLocation];
+                            }
+                        }
+                    });
+                } else {
+                    [CityManager fetchLocationWithGeonameId:cityCode completionHandler:^(NSDictionary *locationInfo, NSError *error) {
+                        if (locationInfo) {
+                            NSString *countryName = locationInfo[@"countryName"];
+                            NSString *adminName1 = locationInfo[@"adminName1"];  // 州/省级名称
+                            NSString *localName = locationInfo[@"name"];         // 当前地点名称
+                            NSString *displayLocation = @"未知";
+                            
+                            // 根据返回数据构建位置显示文本
+                            if (countryName.length > 0) {
+                                if (adminName1.length > 0 && localName.length > 0 && 
+                                    ![countryName isEqualToString:@"中国"] && 
+                                    ![countryName isEqualToString:localName]) {
+                                    // 国外位置：国家 + 州/省 + 地点
+                                    displayLocation = [NSString stringWithFormat:@"%@ %@ %@", countryName, adminName1, localName];
+                                } else if (localName.length > 0 && ![countryName isEqualToString:localName]) {
+                                    // 只有国家和地点名
+                                    displayLocation = [NSString stringWithFormat:@"%@ %@", countryName, localName];
+                                } else {
+                                    // 只有国家名
+                                    displayLocation = countryName;
+                                }
+                            } else if (localName.length > 0) {
+                                displayLocation = localName;
+                            }
+       
+                            [geoNamesCache setObject:locationInfo forKey:cacheKey];
+                            
+                            NSString *cachesDir = [NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES) firstObject];
+                            NSString *geoNamesCacheDir = [cachesDir stringByAppendingPathComponent:@"DYYYGeoNamesCache"];
+                            NSString *cacheFilePath = [geoNamesCacheDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.plist", cacheKey]];
+                            
+                            [locationInfo writeToFile:cacheFilePath atomically:YES];
+                            
+                            dispatch_async(dispatch_get_main_queue(), ^{
+                                NSString *currentText = label.text ?: @"";
+                                
+                                if ([currentText containsString:@"IP属地："]) {
+                                    NSRange range = [currentText rangeOfString:@"IP属地："];
+                                    if (range.location != NSNotFound) {
+                                        NSString *baseText = [currentText substringToIndex:range.location];
+                                        if (![currentText containsString:displayLocation]) {
+                                            label.text = [NSString stringWithFormat:@"%@IP属地：%@", baseText, displayLocation];
+                                        }
+                                    }
+                                } else {
+                                    NSString *baseText = label.text ?: @"";
+                                    if (baseText.length > 0) {
+                                        label.text = [NSString stringWithFormat:@"%@  IP属地：%@", baseText, displayLocation];
+                                    }
+                                }
+                            });
+                        }
+                    }];
+                }
+            } else if (![text containsString:cityName]) {
+                if (!self.model.ipAttribution) {
+                    BOOL isDirectCity = [provinceName isEqualToString:cityName] ||
+                            ([cityCode hasPrefix:@"11"] || [cityCode hasPrefix:@"12"] || 
+                             [cityCode hasPrefix:@"31"] || [cityCode hasPrefix:@"50"]);
 
-			if (cityName.length > 0 && ![text containsString:cityName]) {
-				if (!self.model.ipAttribution) {
-					BOOL isDirectCity = [provinceName isEqualToString:cityName] ||
-							    ([cityCode hasPrefix:@"11"] || [cityCode hasPrefix:@"12"] || [cityCode hasPrefix:@"31"] || [cityCode hasPrefix:@"50"]);
+                    if (isDirectCity) {
+                        label.text = [NSString stringWithFormat:@"%@  IP属地：%@", text, cityName];
+                    } else {
+                        label.text = [NSString stringWithFormat:@"%@  IP属地：%@ %@", text, provinceName, cityName];
+                    }
+                } else {
+                    BOOL isDirectCity = [provinceName isEqualToString:cityName] ||
+                            ([cityCode hasPrefix:@"11"] || [cityCode hasPrefix:@"12"] || 
+                             [cityCode hasPrefix:@"31"] || [cityCode hasPrefix:@"50"]);
 
-					if (isDirectCity) {
-						label.text = [NSString stringWithFormat:@"%@  IP属地：%@", text, cityName];
-					} else {
-						label.text = [NSString stringWithFormat:@"%@  IP属地：%@ %@", text, provinceName, cityName];
-					}
-				} else {
-					BOOL isDirectCity = [provinceName isEqualToString:cityName] ||
-							    ([cityCode hasPrefix:@"11"] || [cityCode hasPrefix:@"12"] || [cityCode hasPrefix:@"31"] || [cityCode hasPrefix:@"50"]);
-
-					BOOL containsProvince = [text containsString:provinceName];
-					if (containsProvince && !isDirectCity) {
-						label.text = [NSString stringWithFormat:@"%@ %@", text, cityName];
-					} else if (containsProvince && isDirectCity) {
-						label.text = [NSString stringWithFormat:@"%@  IP属地：%@", text, cityName];
-					} else if (isDirectCity && containsProvince) {
-						label.text = text;
-					} else if (containsProvince) {
-						label.text = [NSString stringWithFormat:@"%@ %@", text, cityName];
-					} else {
-						label.text = text;
-					}
-				}
-			}
-		}
-	}
+                    BOOL containsProvince = [text containsString:provinceName];
+                    if (containsProvince && !isDirectCity) {
+                        label.text = [NSString stringWithFormat:@"%@ %@", text, cityName];
+                    } else if (containsProvince && isDirectCity) {
+                        label.text = [NSString stringWithFormat:@"%@  IP属地：%@", text, cityName];
+                    } else if (isDirectCity && containsProvince) {
+                        label.text = text;
+                    } else if (containsProvince) {
+                        label.text = [NSString stringWithFormat:@"%@ %@", text, cityName];
+                    } else {
+                        label.text = text;
+                    }
+                }
+            }
+        }
+    }
 	// 应用IP属地标签上移
 	NSString *ipScaleValue = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYNicknameScale"];
 	if (ipScaleValue.length > 0) {
@@ -1449,50 +1632,58 @@ static void DYYYAddCustomViewToParent(UIView *parentView, float transparency) {
 		label.font = originalFont;
 	}
 	if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYEnabsuijiyanse"]) {
-        // 随机生成3个颜色，suiji
-        UIColor *color1 = [UIColor colorWithRed:(CGFloat)arc4random_uniform(256) / 255.0 green:(CGFloat)arc4random_uniform(256) / 255.0 blue:(CGFloat)arc4random_uniform(256) / 255.0 alpha:1.0];
-        UIColor *color2 = [UIColor colorWithRed:(CGFloat)arc4random_uniform(256) / 255.0 green:(CGFloat)arc4random_uniform(256) / 255.0 blue:(CGFloat)arc4random_uniform(256) / 255.0 alpha:1.0];
-        UIColor *color3 = [UIColor colorWithRed:(CGFloat)arc4random_uniform(256) / 255.0 green:(CGFloat)arc4random_uniform(256) / 255.0 blue:(CGFloat)arc4random_uniform(256) / 255.0 alpha:1.0];
-	    
-        NSMutableAttributedString *attributedText = [[NSMutableAttributedString alloc] initWithString:label.text];
-        CFIndex length = [attributedText length];
-        for (CFIndex i = 0; i < length; i++) {
-            CGFloat progress = (CGFloat)i / (length == 0 ? 1 : length - 1);
-	    
-            UIColor *startColor;
-            UIColor *endColor;
-            CGFloat subProgress;
-	    
-            if (progress < 0.5) {
-                startColor = color1;
-                endColor = color2;
-                subProgress = progress * 2;
-            } else {
-                startColor = color2;
-                endColor = color3;
-                subProgress = (progress - 0.5) * 2;
-            }
-	    
-            CGFloat startRed, startGreen, startBlue, startAlpha;
-            CGFloat endRed, endGreen, endBlue, endAlpha;
-            [startColor getRed:&startRed green:&startGreen blue:&startBlue alpha:&startAlpha];
-            [endColor getRed:&endRed green:&endGreen blue:&endBlue alpha:&endAlpha];
-	    
-            CGFloat red = startRed + (endRed - startRed) * subProgress;
-            CGFloat green = startGreen + (endGreen - startGreen) * subProgress;
-            CGFloat blue = startBlue + (endBlue - startBlue) * subProgress;
-            CGFloat alpha = startAlpha + (endAlpha - startAlpha) * subProgress;
-	    
-            UIColor *currentColor = [UIColor colorWithRed:red green:green blue:blue alpha:alpha];
-            [attributedText addAttribute:NSForegroundColorAttributeName value:currentColor range:NSMakeRange(i, 1)];
-        }
-	    
-        label.attributedText = attributedText;
+		UIColor *color1 = [UIColor colorWithRed:(CGFloat)arc4random_uniform(256) / 255.0
+						  green:(CGFloat)arc4random_uniform(256) / 255.0
+						   blue:(CGFloat)arc4random_uniform(256) / 255.0
+						  alpha:1.0];
+		UIColor *color2 = [UIColor colorWithRed:(CGFloat)arc4random_uniform(256) / 255.0
+						  green:(CGFloat)arc4random_uniform(256) / 255.0
+						   blue:(CGFloat)arc4random_uniform(256) / 255.0
+						  alpha:1.0];
+		UIColor *color3 = [UIColor colorWithRed:(CGFloat)arc4random_uniform(256) / 255.0
+						  green:(CGFloat)arc4random_uniform(256) / 255.0
+						   blue:(CGFloat)arc4random_uniform(256) / 255.0
+						  alpha:1.0];
+
+		NSMutableAttributedString *attributedText = [[NSMutableAttributedString alloc] initWithString:label.text];
+		CFIndex length = [attributedText length];
+		for (CFIndex i = 0; i < length; i++) {
+			CGFloat progress = (CGFloat)i / (length == 0 ? 1 : length - 1);
+
+			UIColor *startColor;
+			UIColor *endColor;
+			CGFloat subProgress;
+
+			if (progress < 0.5) {
+				startColor = color1;
+				endColor = color2;
+				subProgress = progress * 2;
+			} else {
+				startColor = color2;
+				endColor = color3;
+				subProgress = (progress - 0.5) * 2;
+			}
+
+			CGFloat startRed, startGreen, startBlue, startAlpha;
+			CGFloat endRed, endGreen, endBlue, endAlpha;
+			[startColor getRed:&startRed green:&startGreen blue:&startBlue alpha:&startAlpha];
+			[endColor getRed:&endRed green:&endGreen blue:&endBlue alpha:&endAlpha];
+
+			CGFloat red = startRed + (endRed - startRed) * subProgress;
+			CGFloat green = startGreen + (endGreen - startGreen) * subProgress;
+			CGFloat blue = startBlue + (endBlue - startBlue) * subProgress;
+			CGFloat alpha = startAlpha + (endAlpha - startAlpha) * subProgress;
+
+			UIColor *currentColor = [UIColor colorWithRed:red green:green blue:blue alpha:alpha];
+			[attributedText addAttribute:NSForegroundColorAttributeName value:currentColor range:NSMakeRange(i, 1)];
+		}
+
+		label.attributedText = attributedText;
 	} else {
-	    NSString *labelColor = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYLabelColor"];
-	    if (labelColor.length > 0) {
-	    	label.textColor = [DYYYManager colorWithHexString:labelColor];
-	    }
+		NSString *labelColor = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYLabelColor"];
+		if (labelColor.length > 0) {
+			label.textColor = [DYYYManager colorWithHexString:labelColor];
+		}
 	}
 	return label;
 }
@@ -1632,53 +1823,59 @@ static CGFloat currentScale = 1.0;
 }
 
 %end
-
 %hook AWEPlayInteractionDescriptionScrollView
 
 - (void)layoutSubviews {
-	%orig;
+    %orig;
+    
+    self.transform = CGAffineTransformIdentity;
+    
+    NSString *descriptionOffsetValue = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYDescriptionVerticalOffset"];
+    CGFloat verticalOffset = 0;
+    if (descriptionOffsetValue.length > 0) {
+        verticalOffset = [descriptionOffsetValue floatValue];
+    }
+    
+    UIView *parentView = self.superview;
+    UIView *grandParentView = nil;
 
-	self.transform = CGAffineTransformIdentity;
-
-	// 添加文案垂直偏移支持
-	NSString *descriptionOffsetValue = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYDescriptionVerticalOffset"];
-	CGFloat verticalOffset = 0;
-	if (descriptionOffsetValue.length > 0) {
-		verticalOffset = [descriptionOffsetValue floatValue];
-	}
-
-	UIView *parentView = self.superview;
-	UIView *grandParentView = nil;
-
-	if (parentView) {
-		grandParentView = parentView.superview;
-	}
+    if (parentView) {
+        grandParentView = parentView.superview;
+    }
+    
+    if (grandParentView && verticalOffset != 0) {
+        CGAffineTransform translationTransform = CGAffineTransformMakeTranslation(0, verticalOffset);
+        grandParentView.transform = translationTransform;
+    }
 }
 
 %end
 
-// 对新版文案的缩放（33.0以上）
-
+// 对新版文案的偏移（33.0以上）
 %hook AWEPlayInteractionDescriptionLabel
 
 - (void)layoutSubviews {
-	%orig;
+    %orig;
+    
+    self.transform = CGAffineTransformIdentity;
+    
+    NSString *descriptionOffsetValue = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYDescriptionVerticalOffset"];
+    CGFloat verticalOffset = 0;
+    if (descriptionOffsetValue.length > 0) {
+        verticalOffset = [descriptionOffsetValue floatValue];
+    }
+    
+    UIView *parentView = self.superview;
+    UIView *grandParentView = nil;
 
-	self.transform = CGAffineTransformIdentity;
-
-	// 添加文案垂直偏移支持
-	NSString *descriptionOffsetValue = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYDescriptionVerticalOffset"];
-	CGFloat verticalOffset = 0;
-	if (descriptionOffsetValue.length > 0) {
-		verticalOffset = [descriptionOffsetValue floatValue];
-	}
-
-	UIView *parentView = self.superview;
-	UIView *grandParentView = nil;
-
-	if (parentView) {
-		grandParentView = parentView.superview;
-	}
+    if (parentView) {
+        grandParentView = parentView.superview;
+    }
+    
+    if (grandParentView && verticalOffset != 0) {
+        CGAffineTransform translationTransform = CGAffineTransformMakeTranslation(0, verticalOffset);
+        grandParentView.transform = translationTransform;
+    }
 }
 
 %end
@@ -1794,7 +1991,6 @@ static CGFloat currentScale = 1.0;
 
 %end
 
-
 // 去除启动视频广告
 %hook AWEAwesomeSplashFeedCellOldAccessoryView
 
@@ -1824,8 +2020,6 @@ static CGFloat currentScale = 1.0;
 // 获取资源的地址
 %hook AWEURLModel
 %new - (NSURL *)getDYYYSrcURLDownload {
-	;
-	;
 	NSURL *bestURL;
 	for (NSString *url in self.originURLList) {
 		if ([url containsString:@"video_mp4"] || [url containsString:@".jpeg"] || [url containsString:@".mp3"]) {
@@ -1878,7 +2072,6 @@ static CGFloat currentScale = 1.0;
 }
 
 %end
-
 
 // 应用内推送毛玻璃效果
 %hook AWEInnerNotificationWindow
@@ -1966,9 +2159,7 @@ static CGFloat currentScale = 1.0;
 
 	[self clearBackgroundRecursivelyInView:containerView];
 
-	if (isDarkMode) {
-		[self setLabelsColorWhiteInView:containerView];
-	}
+	[self setLabelsColorWhiteInView:containerView];
 }
 
 %new
@@ -2000,27 +2191,84 @@ static CGFloat currentScale = 1.0;
 
 %end
 
-//开启自动背景切换
+// 开启自动背景切换
 %hook AWESettingThemeManager
- 
+
 // 控制自动主题开关状态
 - (BOOL)isAutoChangeEnable {
-     if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYisEnableAutoTheme"]) {
-         return YES; // 强制启用自动主题
-     }
-     return %orig; // 保持原始逻辑
+	if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYisEnableAutoTheme"]) {
+		return YES; // 强制启用自动主题
+	}
+	return %orig; // 保持原始逻辑
 }
- 
+
 // 控制自动切换主题行为
 - (void)startAutoChangeThemeCanRequest:(BOOL)arg1 {
-     if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYisEnableAutoTheme"]) {
-         BOOL newArg = YES; // 创建新变量避免直接修改参数
-         %orig(newArg);     // 调用原始方法并传入新参数
-         return;
-     }
-     %orig(arg1); // 保持原始参数调用
+	if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYisEnableAutoTheme"]) {
+		BOOL newArg = YES;	  // 创建新变量避免直接修改参数
+		%orig(newArg); // 调用原始方法并传入新参数
+		return;
+	}
+	%orig(arg1); // 保持原始参数调用
 }
- 
+
+%end
+
+// 为 AWEUserActionSheetView 添加毛玻璃效果
+%hook AWEUserActionSheetView
+
+- (void)layoutSubviews {
+	%orig;
+	if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYisEnableSheetBlur"]) {
+		[self applyBlurEffectAndWhiteText];
+	}
+}
+
+%new
+- (void)applyBlurEffectAndWhiteText {
+	// 应用毛玻璃效果到容器视图
+	if (self.containerView) {
+		self.containerView.backgroundColor = [UIColor clearColor];
+
+		for (UIView *subview in self.containerView.subviews) {
+			if ([subview isKindOfClass:[UIVisualEffectView class]] && subview.tag == 9999) {
+				[subview removeFromSuperview];
+			}
+		}
+
+		UIBlurEffect *blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleDark];
+		UIVisualEffectView *blurEffectView = [[UIVisualEffectView alloc] initWithEffect:blurEffect];
+		blurEffectView.frame = self.containerView.bounds;
+		blurEffectView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+		blurEffectView.alpha = 0.9;
+		blurEffectView.tag = 9999;
+
+		[self.containerView insertSubview:blurEffectView atIndex:0];
+
+		[self setTextColorWhiteRecursivelyInView:self.containerView];
+	}
+}
+
+%new
+- (void)setTextColorWhiteRecursivelyInView:(UIView *)view {
+	for (UIView *subview in view.subviews) {
+		if (![subview isKindOfClass:[UIVisualEffectView class]]) {
+			subview.backgroundColor = [UIColor clearColor];
+		}
+
+		if ([subview isKindOfClass:[UILabel class]]) {
+			UILabel *label = (UILabel *)subview;
+			label.textColor = [UIColor whiteColor];
+		}
+
+		if ([subview isKindOfClass:[UIButton class]]) {
+			UIButton *button = (UIButton *)subview;
+			[button setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+		}
+
+		[self setTextColorWhiteRecursivelyInView:subview];
+	}
+}
 %end
 
 %hook _TtC33AWECommentLongPressPanelSwiftImpl32CommentLongPressPanelCopyElement
@@ -2040,11 +2288,82 @@ static CGFloat currentScale = 1.0;
 }
 %end
 
+// 禁用AWEPlayVideoViewController中的HDR
+%hook AWEPlayVideoViewController
+- (void)setHDRVideoMode:(NSInteger)mode {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYDisableHDR"]) {
+        %orig(0); 
+    } else {
+        %orig; 
+    }
+}
+%end
+// 禁用BDSimMediaPlayer中的HDR
+%hook BDSimMediaPlayer
+- (void)setHDRVideoMode:(NSInteger)mode {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYDisableHDR"]) {
+        %orig(0);
+    } else {
+        %orig;
+    }
+}
+%end
+// 禁用BDSimPlayerMediaViewController中的HDR
+%hook BDSimPlayerMediaViewController
+- (void)setHDRVideoMode:(NSInteger)mode {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYDisableHDR"]) {
+        %orig(0);
+    } else {
+        %orig;
+    }
+}
+%end
+
+// 设置修改顶栏标题
+%hook AWEHPTopTabItemTextContentView
+
+- (void)layoutSubviews {
+	%orig;
+
+	NSString *topTitleConfig = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYModifyTopTabText"];
+	if (topTitleConfig.length == 0)
+		return;
+
+	NSArray *titlePairs = [topTitleConfig componentsSeparatedByString:@"#"];
+
+	NSString *accessibilityLabel = nil;
+	if ([self.superview respondsToSelector:@selector(accessibilityLabel)]) {
+		accessibilityLabel = self.superview.accessibilityLabel;
+	}
+	if (accessibilityLabel.length == 0)
+		return;
+
+	for (NSString *pair in titlePairs) {
+		NSArray *components = [pair componentsSeparatedByString:@"="];
+		if (components.count != 2)
+			continue;
+
+		NSString *originalTitle = components[0];
+		NSString *newTitle = components[1];
+
+		if ([accessibilityLabel isEqualToString:originalTitle]) {
+			if ([self respondsToSelector:@selector(setContentText:)]) {
+				[self setContentText:newTitle];
+			} else {
+				[self setValue:newTitle forKey:@"contentText"];
+			}
+			break;
+		}
+	}
+}
+
+%end
+
 %ctor {
 	%init(DYYYSettingsGesture);
 	if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYUserAgreementAccepted"]) {
 		%init;
-		dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+		dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
 		  %init(needDelays);
 		});
 	}
